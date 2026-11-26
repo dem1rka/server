@@ -22,6 +22,14 @@ for (const name of ['001_initial.sql', '003_family.sql']) {
 
 execFileSync('psql', ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', '-f', '-'], {
   input: statements.join('\n') + '\n',
-  env: { ...process.env, PGDATABASE: connection.toString() },
+  env: {
+    ...process.env,
+    PGHOST: connection.hostname.replace(/^\[|\]$/g, ''),
+    PGPORT: connection.port || '5432',
+    PGDATABASE: decodeURIComponent(connection.pathname.slice(1)),
+    PGUSER: decodeURIComponent(connection.username),
+    PGPASSWORD: decodeURIComponent(connection.password),
+    PGSSLMODE: connection.searchParams.get('sslmode') || process.env.PGSSLMODE || 'prefer',
+  },
   stdio: ['pipe', 'inherit', 'inherit'],
 });
