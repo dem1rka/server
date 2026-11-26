@@ -1,0 +1,8 @@
+.git
+.env
+.env.*
+node_modules
+.test-pg
+.role-grants
+*.log
+test

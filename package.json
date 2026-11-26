@@ -1,0 +1,30 @@
+{
+  "name": "neura-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env --import ./register.mjs --watch index.js",
+    "start": "node --import ./register.mjs index.js",
+    "check:db": "node --env-file=.env check-db.js",
+    "test": "node --import ./register.mjs --test test/security.test.js",
+    "prisma": "node --env-file=.env prisma-cli.js",
+    "postinstall": "prisma generate",
+    "admin:create": "node --env-file=.env create-admin.js",
+    "db:migrate": "node migrate.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@nestjs/common": "^11.2.10",
+    "@nestjs/core": "^11.2.10",
+    "@nestjs/platform-fastify": "^11.2.10",
+    "@node-rs/argon2": "^2.0.2",
+    "@prisma/client": "^6.19.0",
+    "prisma": "^6.19.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "tsx": "^4.23.15",
+    "zod": "^4.1.12"
+  }
+}

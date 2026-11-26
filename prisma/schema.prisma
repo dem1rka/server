@@ -1,0 +1,228 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model audit_events {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_id      String?  @db.Uuid
+  action        String
+  resource_type String
+  resource_id   String?  @db.Uuid
+  outcome       String
+  request_id    String?  @db.Uuid
+  occurred_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([actor_id, occurred_at(sort: Desc)], map: "audit_actor_idx")
+  @@index([resource_type, resource_id, occurred_at(sort: Desc)], map: "audit_resource_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model auth_tokens {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  purpose     String
+  token_hash  Bytes     @unique
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at  DateTime  @db.Timestamptz(6)
+  consumed_at DateTime? @db.Timestamptz(6)
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "auth_tokens_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model consents {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String       @db.Uuid
+  participant_id   String       @db.Uuid
+  purpose          String
+  document_version String
+  granted_at       DateTime     @default(now()) @db.Timestamptz(6)
+  withdrawn_at     DateTime?    @db.Timestamptz(6)
+  participants     participants @relation(fields: [participant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users        @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([participant_id], map: "consents_participant_idx")
+  @@index([user_id], map: "consents_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model files {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  observation_id String       @db.Uuid
+  object_key     String       @unique
+  media_type     String
+  size_bytes     BigInt
+  sha256         Bytes
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  observations   observations @relation(fields: [observation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([observation_id], map: "files_observation_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model observations {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  participant_id     String       @db.Uuid
+  author_id          String       @db.Uuid
+  kind               String
+  instrument_key     String
+  instrument_version String
+  language           String       @default("ru")
+  age_months         Int?
+  status             String       @default("draft")
+  payload            Json         @default("{}")
+  revision           Int          @default(1)
+  started_at         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime     @default(now()) @db.Timestamptz(6)
+  completed_at       DateTime?    @db.Timestamptz(6)
+  files              files[]
+  users              users        @relation(fields: [author_id], references: [id], onUpdate: NoAction)
+  participants       participants @relation(fields: [participant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reports            reports[]
+
+  @@index([author_id], map: "observations_author_idx")
+  @@index([participant_id, started_at(sort: Desc)], map: "observations_participant_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model participant_access {
+  participant_id                             String       @db.Uuid
+  user_id                                    String       @db.Uuid
+  permission                                 String
+  granted_by                                 String       @db.Uuid
+  created_at                                 DateTime     @default(now()) @db.Timestamptz(6)
+  expires_at                                 DateTime?    @db.Timestamptz(6)
+  users_participant_access_granted_byTousers users        @relation("participant_access_granted_byTousers", fields: [granted_by], references: [id], onUpdate: NoAction)
+  participants                               participants @relation(fields: [participant_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_participant_access_user_idTousers    users        @relation("participant_access_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([participant_id, user_id])
+  @@index([user_id], map: "participant_access_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model participants {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id           String               @db.Uuid
+  label              String
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  assessments        assessments[]
+  consents           consents[]
+  family_children    family_children[]
+  invitations        invitations[]
+  observations       observations[]
+  participant_access participant_access[]
+  users              users                @relation(fields: [owner_id], references: [id], onUpdate: NoAction)
+
+  @@index([owner_id], map: "participants_owner_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reports {
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  observation_id       String       @db.Uuid
+  observation_revision Int
+  generator_version    String
+  content              Json
+  created_at           DateTime     @default(now()) @db.Timestamptz(6)
+  observations         observations @relation(fields: [observation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([observation_id], map: "reports_observation_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sessions {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  token_hash   Bytes     @unique
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at   DateTime  @db.Timestamptz(6)
+  last_seen_at DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at   DateTime? @db.Timestamptz(6)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([expires_at], map: "sessions_expiry_idx")
+  @@index([user_id], map: "sessions_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                   String               @unique
+  password_hash                                           String
+  display_name                                            String               @default("")
+  email_verified_at                                       DateTime?            @db.Timestamptz(6)
+  disabled_at                                             DateTime?            @db.Timestamptz(6)
+  created_at                                              DateTime             @default(now()) @db.Timestamptz(6)
+  account_role                                            String               @default("patient")
+  assessments                                             assessments[]
+  auth_tokens                                             auth_tokens[]
+  consents                                                consents[]
+  family_children                                         family_children[]
+  invitations                                             invitations[]
+  observations                                            observations[]
+  participant_access_participant_access_granted_byTousers participant_access[] @relation("participant_access_granted_byTousers")
+  participant_access_participant_access_user_idTousers    participant_access[] @relation("participant_access_user_idTousers")
+  participants                                            participants[]
+  sessions                                                sessions[]
+}
+
+model assessments {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id      String        @db.Uuid
+  specialist_id String        @db.Uuid
+  created_at    DateTime      @default(now()) @db.Timestamptz(6)
+  participants  participants  @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users         @relation(fields: [specialist_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignments   assignments[]
+}
+
+model assignment_attempts {
+  assignment_id String      @id @db.Uuid
+  answers       Int[]       @default([]) @db.SmallInt
+  revision      Int         @default(0)
+  started_at    DateTime    @default(now()) @db.Timestamptz(6)
+  completed_at  DateTime?   @db.Timestamptz(6)
+  assignments   assignments @relation(fields: [assignment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model assignments {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assessment_id       String               @db.Uuid
+  kind                String
+  version             String               @default("1")
+  assignment_attempts assignment_attempts?
+  assessments         assessments          @relation(fields: [assessment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([assessment_id, kind])
+}
+
+model family_children {
+  family_id    String       @db.Uuid
+  child_id     String       @db.Uuid
+  participants participants @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users        users        @relation(fields: [family_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([family_id, child_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model invitations {
+  token_hash   Bytes         @id
+  email        String
+  role         String
+  issuer       String        @db.Uuid
+  child_id     String?       @db.Uuid
+  expires_at   DateTime      @db.Timestamptz(6)
+  consumed_at  DateTime?     @db.Timestamptz(6)
+  participants participants? @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users        users         @relation(fields: [issuer], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
