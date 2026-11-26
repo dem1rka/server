@@ -71,6 +71,7 @@ class AuthController {
   async predict(@Req() req,@Body() body){
     const state=researchState.parse(body);
     if(state.records.length!==1)fail(400,'Нужна одна запись');
+    if(state.records[0].protocolVersion==='neura-geode-short-v1')return {available:false,reason:'Сравнение с моделью доступно только для полного режима GEODE.'};
     const endpoint=process.env.MODEL_URL || (process.env.MODEL_HOSTPORT?'http://'+process.env.MODEL_HOSTPORT:'');
     if(!endpoint||!process.env.MODEL_API_KEY)fail(503,'Сервис модели не настроен');
     try{const response=await fetch(endpoint+'/predict',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.MODEL_API_KEY},body:JSON.stringify(state.records[0]),signal:AbortSignal.timeout(15000)});
