@@ -263,7 +263,9 @@ export async function buildApp({db, origin, production=false}) {
   await server.register(cookie);
   await server.register(helmet);
   server.addHook('onRoute',route => {
-    if (['/api/auth/login','/api/invitations/accept','/api/recovery/accept'].includes(route.url)) {
+    if (route.url === '/api/auth/login') {
+      route.config = {...route.config,rateLimit:false};
+    } else if (['/api/invitations/accept','/api/recovery/accept'].includes(route.url)) {
       route.config = {...route.config,rateLimit:{max:10,timeWindow:'15 minutes'}};
     }
   });
