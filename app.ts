@@ -68,15 +68,39 @@ class AuthController {
     } catch { fail(503,'Модель временно недоступна'); }
   }
   @Post('research/predict') @UseGuards(SessionGuard)
-  async predict(@Req() req,@Body() body){
+  async predict(@Body() body, @Res({passthrough:true}) reply) {
     const state=researchState.parse(body);
     if(state.records.length!==1)fail(400,'Нужна одна запись');
-    if(state.records[0].protocolVersion==='neura-geode-short-v1')return {available:false,reason:'Сравнение с моделью доступно только для полного режима GEODE.'};
-    const endpoint=process.env.MODEL_URL || (process.env.MODEL_HOSTPORT?'http://'+process.env.MODEL_HOSTPORT:'');
-    if(!endpoint||!process.env.MODEL_API_KEY)fail(503,'Сервис модели не настроен');
-    try{const response=await fetch(endpoint+'/predict',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.MODEL_API_KEY},body:JSON.stringify(state.records[0]),signal:AbortSignal.timeout(15000)});
-      if(!response.ok)fail(503,'Модель временно недоступна');return await response.json();
-    }catch{fail(503,'Модель временно недоступна');}
+    const [record] = state.records;
+    if (record.status !== 'completed') return {available:false, reason:'Для анализа требуется завершённое задание.'};
+    if (record.protocolVersion === 'neura-geode-short-v1') return {available:false, reason:'Сравнение с моделью доступно только для полного режима GEODE.'};
+    if (record.instrument !== 'aq10-child' && record.instrument !== 'geode-neura') {
+      const reason = record.kind === 'questionnaire'
+        ? 'Модель AQ-10 поддерживает только детскую форму (4–11 лет).'
+        : 'Для этой методики пока нет подходящей обученной модели.';
+      return {available:false, reason};
+    }
+
+    const unavailable = (error: string) => {
+      reply.code(503);
+      return {error};
+    };
+    const endpoint = process.env.MODEL_URL?.trim() || (process.env.MODEL_HOSTPORT && 'http://' + process.env.MODEL_HOSTPORT);
+    const key = process.env.MODEL_API_KEY;
+    if (!endpoint || !key) return unavailable('Сервис модели не настроен');
+    // A free Render service can take about a minute to wake up.
+    const signal = AbortSignal.timeout(75_000);
+    try {
+      const response = await fetch(endpoint.replace(/\/+$/, '') + '/predict', {
+        method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + key},
+        body:JSON.stringify(record), signal,
+      });
+      if (response.status === 401 || response.status === 403) return unavailable('Сервис модели отклонил ключ доступа.');
+      if (!response.ok) return unavailable('Модель временно недоступна');
+      return await response.json();
+    } catch {
+      return unavailable(signal.aborted ? 'Сервис модели не успел ответить. Повторите сравнение.' : 'Модель временно недоступна');
+    }
   }
   @Post('accounts') @UseGuards(SessionGuard)
   async createAccount(@Req() req,@Body() body){

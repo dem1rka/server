@@ -4,6 +4,56 @@ import {randomUUID} from 'node:crypto';
 import {PrismaClient} from '@prisma/client';
 import {buildApp} from '../app.ts';
 import {provision} from '../roles.js';
+
+test('reference comparison checks the form before contacting the model', async t => {
+ const origin = 'http://localhost:5173';
+ const db = {sessions:{findFirst:async () => ({id:randomUUID(), users:{id:randomUUID(), account_role:'family'}})}};
+ const app = await buildApp({db, origin});
+ t.after(() => app.close());
+ for (const name of ['MODEL_URL', 'MODEL_HOSTPORT', 'MODEL_API_KEY']) {
+  const previous = process.env[name];
+  delete process.env[name];
+  t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+ }
+ const request = record => app.inject({
+  method:'POST', url:'/api/research/predict',
+  headers:{origin, 'x-neura-request':'1', cookie:'neura_session=' + 'a'.repeat(64)},
+  payload:{schemaVersion:1, assessmentId:record.assessmentId, ageMonths:record.ageMonths, records:[record]},
+ });
+ const record = {
+  schemaVersion:1, id:randomUUID(), assessmentId:randomUUID(), createdAt:new Date().toISOString(),
+  status:'completed', completedAt:new Date().toISOString(), kind:'questionnaire', protocolVersion:'neura-aq10-i18n-v1',
+  ageMonths:144, instrument:'aq10-adolescent', aqVersion:'adolescent', respondent:'parent', language:'ru', answers:Array(10).fill(1),
+ };
+ const upstream = t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected request'); });
+ for (const unsupported of [record, {...record, ageMonths:192, instrument:'aq10-adult', aqVersion:'adult', respondent:'self'}]) {
+  const result = await request(unsupported);
+  assert.equal(result.statusCode, 201);
+  assert.deepEqual(result.json(), {available:false, reason:'Модель AQ-10 поддерживает только детскую форму (4–11 лет).'});
+ }
+ const child = {...record, ageMonths:132, instrument:'aq10-child', aqVersion:'child'};
+ const missing = await request(child);
+ assert.equal(missing.statusCode, 503);
+ assert.equal(missing.json().error, 'Сервис модели не настроен');
+ assert.equal(upstream.mock.callCount(), 0);
+
+ process.env.MODEL_URL = 'https://model.example.invalid/';
+ process.env.MODEL_API_KEY = 'test-key';
+ upstream.mock.mockImplementationOnce(() => new Response(null, {status:401}));
+ const denied = await request(child);
+ assert.equal(denied.statusCode, 503);
+ assert.equal(denied.json().error, 'Сервис модели отклонил ключ доступа.');
+ const prediction = {available:true, percentile:42, description:'Fixture'};
+ upstream.mock.mockImplementationOnce(() => Response.json(prediction));
+ const success = await request(child);
+ assert.equal(success.statusCode, 201);
+ assert.deepEqual(success.json(), prediction);
+ const [url, options] = upstream.mock.calls[1].arguments;
+ assert.equal(url, 'https://model.example.invalid/predict');
+ assert.equal(options.headers.Authorization, 'Bearer test-key');
+ assert.deepEqual(JSON.parse(options.body), child);
+});
+
 test('research assignments: ownership, child scope, paired IDs, stored results, invalid completion',{timeout:60000},async()=>{
  const prisma=new PrismaClient({datasourceUrl:'postgresql://neura_app:test-only@127.0.0.1:55439/neura?schema=neura'}),rollback=new Error('rollback');
  try{await assert.rejects(prisma.$transaction(async tx=>{
